@@ -1,0 +1,26 @@
+name:                haskellplz
+version:             0.1.0.0
+synopsis:            Simple project template from stack
+description:         Please see README.md
+homepage:            https://github.com/5outh/haskellplz#readme
+license:             BSD3
+author:              Benjamin Kovach
+maintainer:          benjamin@kovach.me
+copyright:           MIT
+category:            Web
+
+dependencies:
+  - base >= 4.7 && < 5
+  - turtle
+  - optparse-applicative
+  - HStringTemplate 
+  - split
+  - text
+  - yaml
+  - directory
+  - megaparsec
+
+executables:
+  haskellplz:
+    source-dirs:      src
+    main:             Main.hs
