@@ -19,6 +19,7 @@ dependencies:
   - yaml
   - directory
   - megaparsec
+  - transformers
 
 executables:
   haskellplz:

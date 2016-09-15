@@ -30,9 +30,5 @@ executable haskellplz
     , yaml
     , directory
     , megaparsec
-  other-modules:
-      DSP.List
-      DSP.Listtt
-      LAAAAAAPS.Dcccrrink_it
-      OK.OK.WHATEVER.WhatTheHeckEver
+    , transformers
   default-language: Haskell2010

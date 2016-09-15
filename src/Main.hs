@@ -3,6 +3,7 @@
 
 module Main where
 
+import Control.Monad.Trans.Reader
 import qualified Text.Megaparsec as MP
 import qualified Text.Megaparsec.String as MP
 import Data.Monoid
@@ -19,11 +20,12 @@ data HaskellPlz = HaskellPlz
   { cmd :: Command
   } deriving (Show, Eq)
 
-data Command =
-  CMake Make
+data Command
+  = CMake Entity
+  | CDelete Entity
   deriving (Show, Eq)
 
-data Make =
+data Entity =
   Module String
   deriving (Show, Eq)
 
@@ -35,18 +37,23 @@ data ModuleDesc =
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
-make :: Parser Make
-make = Module <$> strArgument (metavar "MODULE" <> help "Module to create")
+entity :: Parser Entity
+entity =
+  Module <$> strArgument (metavar "MODULE" <> help "Module to operate on")
 
+
+-- TOOO: This is broken
 command_ :: Parser Command
 command_ =
   CMake <$>
-  (subparser $ command "module" (make `withInfo` "Make a new haskell module"))
+  ((subparser $ command "module" (entity `withInfo` "Make a new haskell module"))
+  )
 
 haskellPlz :: Parser HaskellPlz
 haskellPlz =
   HaskellPlz <$>
-  (subparser $ command "make" (command_ `withInfo` "Make new stuff"))
+  ((subparser $ command "make" (command_ `withInfo` "Make new stuff")) <|>
+   (subparser $ command "delete" (command_ `withInfo` "Delete stuff")))
 
 haskellPlzInfo :: ParserInfo HaskellPlz
 haskellPlzInfo =
@@ -60,10 +67,10 @@ capital = MP.oneOf ['A' .. 'Z']
 
 ident :: MP.Parser String
 ident = do
-  let identChar = MP.oneOf $ ['A' .. 'Z'] <> ['a' .. 'z'] <> ['0'..'9'] <> ['_']
+  let identChar =
+        MP.oneOf $ ['A' .. 'Z'] <> ['a' .. 'z'] <> ['0' .. '9'] <> ['_']
   c <- capital
-  rest <-
-    MP.optional (MP.many identChar)
+  rest <- MP.optional (MP.many identChar)
   pure $
     case rest of
       Nothing -> [c]
@@ -72,18 +79,33 @@ ident = do
 moduleDesc :: MP.Parser ModuleDesc
 moduleDesc = ModuleDesc <$> ident `MP.sepBy1` (MP.char '.')
 
-makeModule :: String -> ModuleDesc -> IO ()
-makeModule home (ModuleDesc desc) = do
-  let splitModule = "src" : desc 
+makeModule :: ModuleDesc -> ReaderT String IO ()
+makeModule (ModuleDesc desc) = do
+  home <- ask
+  let splitModule = "src" : desc
       dir = init splitModule
       dirpath = T.pack $ (intercalate "/" dir) <> "/"
       file = (intercalate "/" splitModule) <> ".hs"
       moduleName = intercalate "." desc
+  liftIO . putStrLn $ "Creating new module " <> moduleName
   moduleTemplate :: StringTemplate T.Text <-
+    liftIO $
     newSTMP <$> readFile (home <> "/.haskellplz/templates/module.hstring")
   let rendered = render $ setAttribute "module" moduleName moduleTemplate
   shell ("mkdir -p " <> dirpath) empty
-  TIO.writeFile file rendered
+  liftIO $ TIO.writeFile file rendered
+
+deleteModule :: ModuleDesc -> ReaderT String IO ()
+deleteModule (ModuleDesc desc) = do
+  home <- ask
+  let splitModule = "src" : desc
+      dir = init splitModule
+      dirpath = T.pack $ (intercalate "/" dir) <> "/"
+      file = (intercalate "/" splitModule) <> ".hs"
+      moduleName = intercalate "." desc
+  -- TODO ask for permission
+  liftIO . putStrLn $ "Deleting module " <> moduleName
+  rm (fromText $ T.pack file)
 
 -- TODO subparser to call haskellplz make module, for example
 main :: IO ()
@@ -91,8 +113,11 @@ main = do
   home <- getHomeDirectory
   parsed <- execParser haskellPlzInfo
   case parsed of
-    HaskellPlz (CMake (Module moduleName)) -> 
-        case MP.parse moduleDesc "(interactive)" moduleName of
-            Left err -> putStrLn $ moduleName <> " is not a valid module name."
-            Right desc -> makeModule home desc
-    
+    HaskellPlz (CMake (Module moduleName)) ->
+      case MP.parse moduleDesc "(interactive)" moduleName of
+        Left err -> putStrLn $ moduleName <> " is not a valid module name."
+        Right desc -> runReaderT (makeModule desc) home
+    HaskellPlz (CDelete (Module moduleName)) ->
+      case MP.parse moduleDesc "(interactive)" moduleName of
+        Left err -> putStrLn $ moduleName <> " is not a valid module name."
+        Right desc -> runReaderT (deleteModule desc) home
